@@ -55,6 +55,7 @@ class Temporary():
     def __init__(self):
         global curr_tmp
         self.name_ = "tmp" + str(curr_tmp)
+        curr_tmp+=1
 
     def name(self):
         return self.name_
