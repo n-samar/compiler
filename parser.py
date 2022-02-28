@@ -12,6 +12,7 @@ class Tag():
     TRUE = 258
     FALSE = 259
     EOF = 260
+    TYPE = 261
 
 class Num(Token):
     def __init__(self, v):
@@ -31,6 +32,9 @@ class Lexer():
         self.words_ = dict()
         self.Reserve(Word(Tag.TRUE, "true"))
         self.Reserve(Word(Tag.FALSE, "false"))
+        self.Reserve(Word(Tag.TYPE, "bool"))
+        self.Reserve(Word(Tag.TYPE, "char"))
+        self.Reserve(Word(Tag.TYPE, "int"))
 
     def Reserve(self, word) -> None:
         self.words_[word.lexeme_] = word
@@ -77,7 +81,10 @@ class Lexer():
         self.char_idx_ += 1
         return t
 
-class LexedInfixArithmeticParser():
+class Symbol():
+    pass
+
+class LexedParser():
     def __init__(self, program_string):
         self.lexer_ = Lexer(program_string)
         self.char_idx_ = 0
@@ -103,7 +110,10 @@ class LexedInfixArithmeticParser():
         elif self.lookahead_.tag_ == Tag.ID:
             tmp = self.lookahead_;
             self.Match(self.lookahead_.tag_)
-            print(f"{tmp.lexeme_} ", end="")
+            # print(f"{tmp.lexeme_} ", end="")
+
+            s = self.top_env_.Get(tmp.lexeme_)
+            print(f"{tmp.lexeme_}:{s.type_} ", end="")
         elif self.lookahead_.tag_ == ord('('):
             self.Match(ord('('))
             self.expr();
@@ -111,23 +121,23 @@ class LexedInfixArithmeticParser():
         else:
             print("Syntax error1!")
 
-    def rest(self):
+    def rest_factor(self):
         if self.lookahead_.tag_ == ord('*'):
             self.Match(ord('*'))
             self.factor()
-            self.rest()
+            self.rest_factor()
             print("* ", end="")
         elif self.lookahead_.tag_ == ord('/'):
             self.Match(ord('/'))
             self.factor()
-            self.rest()
+            self.rest_factor()
             print("/ ", end="")
         else:
             pass
 
     def term(self):
         self.factor()
-        self.rest()
+        self.rest_factor()
 
     def expr(self):
         self.term()
@@ -143,8 +153,52 @@ class LexedInfixArithmeticParser():
                 print("- ", end="")
             break
 
+    def program(self):
+        self.top_env_ = None
+        self.block()
+
+    def block(self):
+        self.Match(ord('{'))
+        self.saved_env_ = self.top_env_
+        self.top_env_ = Env(self.top_env_)
+        print("{ ", end="")
+        self.decls()
+        self.stmts()
+        self.Match(ord('}'))
+        self.top_env_ = self.saved_env_
+        print("} ", end="")
+
+    def stmt(self):
+        if self.lookahead_.tag_ == ord('{'):
+            self.block()
+        else:
+            self.factor()
+            self.Match(ord(';'))
+
+    def stmts(self):
+        if self.lookahead_.tag_ == ord('}'):
+            pass
+        else:
+            self.stmt()
+            self.stmts()
+
+    def decls(self):
+        if self.lookahead_.tag_ == Tag.TYPE:
+            self.decl()
+            self.decls()
+        else:
+            pass
+
+    def decl(self):
+        s = Symbol()
+        s.type_ = self.lookahead_.lexeme_
+        self.Match(Tag.TYPE)
+        self.top_env_.Put(self.lookahead_.lexeme_, s)
+        self.Match(Tag.ID)
+        self.Match(ord(';'))
+
     def Parse(self):
-        self.expr()
+        self.program()
         print()
 
 class Env():
@@ -164,8 +218,5 @@ class Env():
         self.table_[s] = symbol
 
 
-for line in sys.stdin:
-    if "" == line.rstrip():
-        break
-    program_string = line.rstrip()
-    LexedInfixArithmeticParser(program_string).Parse()
+program_string = sys.stdin.read()
+LexedParser(program_string).Parse()
