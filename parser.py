@@ -13,6 +13,8 @@ class Tag():
     FALSE = 259
     EOF = 260
     TYPE = 261
+    WHILE = 262
+    IF = 263
 
 class Num(Token):
     def __init__(self, v):
@@ -20,7 +22,7 @@ class Num(Token):
         self.value_ = v
 
     def Visit(self, indent):
-        print(f"{indent}Visiting: {self.value_}")
+        print(f"{indent}{self.value_}")
 
 class Word(Token):
     def __init__(self, t, s):
@@ -28,7 +30,7 @@ class Word(Token):
         self.lexeme_ = s
 
     def Visit(self, indent):
-        print(f"{indent}Visiting: {self.lexeme_}")
+        print(f"{indent}{self.lexeme_}")
 
 class Lexer():
     def __init__(self, program_string):
@@ -41,6 +43,8 @@ class Lexer():
         self.Reserve(Word(Tag.TYPE, "bool"))
         self.Reserve(Word(Tag.TYPE, "char"))
         self.Reserve(Word(Tag.TYPE, "int"))
+        self.Reserve(Word(Tag.WHILE, "while"))
+        self.Reserve(Word(Tag.IF, "if"))
 
     def Reserve(self, word) -> None:
         self.words_[word.lexeme_] = word
@@ -100,7 +104,7 @@ class Assign(Node):
         self.rhs_ = rhs
 
     def Visit(self, indent):
-        print(f"{indent}Visiting: Assign")
+        print(f"{indent}Assign")
         self.lhs_.Visit(indent + "\t")
         self.rhs_.Visit(indent + "\t")
 
@@ -110,7 +114,7 @@ class Seq():
         self.stmts_ = stmts
 
     def Visit(self, indent):
-        print(f"{indent}Visiting: Seq")
+        print(f"{indent}Seq")
         self.stmt_.Visit(indent + "\t")
         if self.stmts_ is not None:
             self.stmts_.Visit(indent + "\t")
@@ -120,7 +124,7 @@ class Eval():
         self.node_ = node
 
     def Visit(self, indent):
-        print(f"{indent}Visiting: Eval")
+        print(f"{indent}Eval")
         self.node_.Visit(indent + "\t")
 
 class Op():
@@ -130,9 +134,40 @@ class Op():
         self.op1_ = operand1
 
     def Visit(self, indent):
-        print(f"{indent}Visiting: Op({self.lexeme_})")
+        print(f"{indent}{self.lexeme_}")
         self.op0_.Visit(indent + "\t")
         self.op1_.Visit(indent + "\t")
+
+class Rel():
+    def __init__(self, lexeme, lhs, rhs):
+        self.lexeme_ = lexeme
+        self.lhs_ = lhs
+        self.rhs_ = rhs
+
+    def Visit(self, indent):
+        print(f"{indent}{self.lexeme_}")
+        self.lhs_.Visit(indent + "\t")
+        self.rhs_.Visit(indent + "\t")
+
+class While():
+    def __init__(self, cond, body):
+        self.cond_ = cond
+        self.body_ = body
+
+    def Visit(self, indent):
+        print(f"{indent}while")
+        self.cond_.Visit(indent + "\t")
+        self.body_.Visit(indent + "\t")
+
+class If():
+    def __init__(self, cond, body):
+        self.cond_ = cond
+        self.body_ = body
+
+    def Visit(self, indent):
+        print(f"{indent}if")
+        self.cond_.Visit(indent + "\t")
+        self.body_.Visit(indent + "\t")
 
 class LexedParser():
     def __init__(self, program_string):
@@ -153,17 +188,17 @@ class LexedParser():
 
     def factor(self):
         if self.lookahead_.tag_ == Tag.NUM:
-            tmp = self.lookahead_;
+            tmp = self.lookahead_
             self.Match(self.lookahead_.tag_)
             return tmp
         elif self.lookahead_.tag_ == Tag.ID:
-            tmp = self.lookahead_;
+            tmp = self.lookahead_
             self.Match(self.lookahead_.tag_)
             s = self.top_env_.Get(tmp.lexeme_)
             return tmp
         elif self.lookahead_.tag_ == ord('('):
             self.Match(ord('('))
-            node = self.expr();
+            node = self.expr()
             self.Match(ord(')'))
             return node
         else:
@@ -202,14 +237,24 @@ class LexedParser():
     def expr_rest(self, node):
         if self.lookahead_.tag_ == ord('='):
             self.Match(ord('='))
-            return Assign('=', node, self.expr())
+            return self.expr_rest(Assign('=', node, self.expr()))
         else:
             return node
 
-    def expr(self):
-        node = self.add()
-        return self.expr_rest(node)
+    def rel_rest(self, node):
+        if self.lookahead_.tag_ == ord('<'):
+            self.Match(ord('<'))
+            return self.rel_rest(Rel('<', node, self.add()))
+        else:
+            return node
 
+    def rel(self):
+        node = self.add()
+        return self.rel_rest(node)
+
+    def expr(self):
+        node = self.rel()
+        return self.expr_rest(node)
 
     def program(self):
         self.top_env_ = None
@@ -228,6 +273,20 @@ class LexedParser():
     def stmt(self):
         if self.lookahead_.tag_ == ord('{'):
             return self.block()
+        elif self.lookahead_.tag_ == Tag.WHILE:
+            self.Match(Tag.WHILE)
+            self.Match(ord('('))
+            cond = self.expr()
+            self.Match(ord(')'))
+            body = self.stmt()
+            return While(cond, body)
+        elif self.lookahead_.tag_ == Tag.IF:
+            self.Match(Tag.IF)
+            self.Match(ord('('))
+            cond = self.expr()
+            self.Match(ord(')'))
+            body = self.stmt()
+            return If(cond, body)
         else:
             node = Eval(self.expr())
             self.Match(ord(';'))
