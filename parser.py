@@ -19,10 +19,16 @@ class Num(Token):
         super().__init__(Tag.NUM)
         self.value_ = v
 
+    def Visit(self, indent):
+        print(f"{indent}Visiting: {self.value_}")
+
 class Word(Token):
     def __init__(self, t, s):
         super().__init__(t)
         self.lexeme_ = s
+
+    def Visit(self, indent):
+        print(f"{indent}Visiting: {self.lexeme_}")
 
 class Lexer():
     def __init__(self, program_string):
@@ -84,12 +90,55 @@ class Lexer():
 class Symbol():
     pass
 
+class Node():
+    pass
+
+class Assign(Node):
+    def __init__(self, lexeme, lhs, rhs):
+        self.lexeme_ = lexeme
+        self.lhs_ = lhs
+        self.rhs_ = rhs
+
+    def Visit(self, indent):
+        print(f"{indent}Visiting: Assign")
+        self.lhs_.Visit(indent + "\t")
+        self.rhs_.Visit(indent + "\t")
+
+class Seq():
+    def __init__(self, stmt, stmts):
+        self.stmt_ = stmt
+        self.stmts_ = stmts
+
+    def Visit(self, indent):
+        print(f"{indent}Visiting: Seq")
+        self.stmt_.Visit(indent + "\t")
+        if self.stmts_ is not None:
+            self.stmts_.Visit(indent + "\t")
+
+class Eval():
+    def __init__(self, node):
+        self.node_ = node
+
+    def Visit(self, indent):
+        print(f"{indent}Visiting: Eval")
+        self.node_.Visit(indent + "\t")
+
+class Op():
+    def __init__(self, lexeme, operand0, operand1):
+        self.lexeme_ = lexeme
+        self.op0_ = operand0
+        self.op1_ = operand1
+
+    def Visit(self, indent):
+        print(f"{indent}Visiting: Op({self.lexeme_})")
+        self.op0_.Visit(indent + "\t")
+        self.op1_.Visit(indent + "\t")
+
 class LexedParser():
     def __init__(self, program_string):
         self.lexer_ = Lexer(program_string)
         self.char_idx_ = 0
         self.lookahead_ = self.NextToken()
-
 
     def NextToken(self):
         token = self.lexer_.Scan()
@@ -106,81 +155,89 @@ class LexedParser():
         if self.lookahead_.tag_ == Tag.NUM:
             tmp = self.lookahead_;
             self.Match(self.lookahead_.tag_)
-            print(f"{tmp.value_} ", end="")
+            return tmp
         elif self.lookahead_.tag_ == Tag.ID:
             tmp = self.lookahead_;
             self.Match(self.lookahead_.tag_)
-            # print(f"{tmp.lexeme_} ", end="")
-
             s = self.top_env_.Get(tmp.lexeme_)
-            print(f"{tmp.lexeme_}:{s.type_} ", end="")
+            return tmp
         elif self.lookahead_.tag_ == ord('('):
             self.Match(ord('('))
-            self.expr();
+            node = self.expr();
             self.Match(ord(')'))
+            return node
         else:
             print("Syntax error1!")
 
-    def rest_factor(self):
+    def rest_factor(self, factor_node):
         if self.lookahead_.tag_ == ord('*'):
             self.Match(ord('*'))
-            self.factor()
-            self.rest_factor()
-            print("* ", end="")
+            node = Op('*', factor_node, self.factor())
+            node = self.rest_factor(node)
+            return node
         elif self.lookahead_.tag_ == ord('/'):
             self.Match(ord('/'))
-            self.factor()
-            self.rest_factor()
-            print("/ ", end="")
+            node = Op('/', factor_node, self.factor())
+            node = self.rest_factor(node)
+            return node
         else:
-            pass
+            return factor_node
 
     def term(self):
-        self.factor()
-        self.rest_factor()
+        factor_node = self.factor()
+        return self.rest_factor(factor_node)
 
-    def expr(self):
-        self.term()
+    def add(self):
+        node = self.term()
         while True:
             if self.lookahead_.tag_ == ord('+'):
                 self.Match(ord('+'))
-                self.term()
-                print("+ ", end="")
+                node = Op("+", node, self.term())
                 continue
             elif self.lookahead_.tag_ == ord('-'):
                 self.Match(ord('-'))
-                self.term()
-                print("- ", end="")
-            break
+                node = Op("-", node, self.term())
+            return node
+
+    def expr_rest(self, node):
+        if self.lookahead_.tag_ == ord('='):
+            self.Match(ord('='))
+            return Assign('=', node, self.expr())
+        else:
+            return node
+
+    def expr(self):
+        node = self.add()
+        return self.expr_rest(node)
+
 
     def program(self):
         self.top_env_ = None
-        self.block()
+        return self.block()
 
     def block(self):
         self.Match(ord('{'))
         self.saved_env_ = self.top_env_
         self.top_env_ = Env(self.top_env_)
-        print("{ ", end="")
         self.decls()
-        self.stmts()
+        node = self.stmts()
         self.Match(ord('}'))
         self.top_env_ = self.saved_env_
-        print("} ", end="")
+        return node
 
     def stmt(self):
         if self.lookahead_.tag_ == ord('{'):
-            self.block()
+            return self.block()
         else:
-            self.factor()
+            node = Eval(self.expr())
             self.Match(ord(';'))
+            return node
 
     def stmts(self):
         if self.lookahead_.tag_ == ord('}'):
-            pass
+            return None
         else:
-            self.stmt()
-            self.stmts()
+            return Seq(self.stmt(), self.stmts())
 
     def decls(self):
         if self.lookahead_.tag_ == Tag.TYPE:
@@ -198,8 +255,7 @@ class LexedParser():
         self.Match(ord(';'))
 
     def Parse(self):
-        self.program()
-        print()
+        return self.program()
 
 class Env():
     def __init__(self, parent_env):
@@ -219,4 +275,6 @@ class Env():
 
 
 program_string = sys.stdin.read()
-LexedParser(program_string).Parse()
+syntax_tree = LexedParser(program_string).Parse()
+
+syntax_tree.Visit("")
