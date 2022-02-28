@@ -19,18 +19,58 @@ class Tag():
 class Num(Token):
     def __init__(self, v):
         super().__init__(Tag.NUM)
-        self.value_ = v
+        self.value_ =  v
 
-    def Visit(self, indent):
-        print(f"{indent}{self.value_}")
+    def Visit(self):
+        print(f"{self.value_}")
+
+    def name(self):
+        return self.value_
 
 class Word(Token):
     def __init__(self, t, s):
         super().__init__(t)
         self.lexeme_ = s
 
-    def Visit(self, indent):
-        print(f"{indent}{self.lexeme_}")
+    def Visit(self):
+        print(f"{self.lexeme_}")
+
+    def name(self):
+        return self.lexeme_
+
+def lvalue(expr):
+    if isinstance(expr, Word):
+            return expr
+    print(f"Syntax error4!")
+
+curr_label = 0
+def newlabel():
+    global curr_label
+    newlabel = "__" + str(curr_label)
+    curr_label+=1
+    return newlabel
+
+curr_tmp = 0
+class Temporary():
+    def __init__(self):
+        global curr_tmp
+        self.name_ = "tmp" + str(curr_tmp)
+
+    def name(self):
+        return self.name_
+
+def rvalue(expr):
+    if isinstance(expr, Word) or isinstance(expr, Num):
+        return expr
+    if isinstance(expr, Op) or isinstance(expr, Rel):
+        t = Temporary()
+        print(f"{t.name()} = {rvalue(expr.lhs_).name()} {expr.lexeme_} {rvalue(expr.rhs_).name()}")
+        return t
+    if isinstance(expr, Assign):
+        z_prime = rvalue(expr.rhs_)
+        print(f"{lvalue(expr.lhs_).name()} = {z_prime.name()}")
+        return z_prime
+    print(f"Syntax error: not rvalue {type(expr).__name__} {isinstance(expr, Rel)}")
 
 class Lexer():
     def __init__(self, program_string):
@@ -103,40 +143,34 @@ class Assign(Node):
         self.lhs_ = lhs
         self.rhs_ = rhs
 
-    def Visit(self, indent):
-        print(f"{indent}Assign")
-        self.lhs_.Visit(indent + "\t")
-        self.rhs_.Visit(indent + "\t")
+    def Visit(self):
+        pass
 
 class Seq():
     def __init__(self, stmt, stmts):
         self.stmt_ = stmt
         self.stmts_ = stmts
 
-    def Visit(self, indent):
-        print(f"{indent}Seq")
-        self.stmt_.Visit(indent + "\t")
+    def Visit(self):
+        self.stmt_.Visit()
         if self.stmts_ is not None:
-            self.stmts_.Visit(indent + "\t")
+            self.stmts_.Visit()
 
 class Eval():
     def __init__(self, node):
         self.node_ = node
 
-    def Visit(self, indent):
-        print(f"{indent}Eval")
-        self.node_.Visit(indent + "\t")
+    def Visit(self):
+        rvalue(self.node_)
 
 class Op():
     def __init__(self, lexeme, operand0, operand1):
         self.lexeme_ = lexeme
-        self.op0_ = operand0
-        self.op1_ = operand1
+        self.lhs_ = operand0
+        self.rhs_ = operand1
 
-    def Visit(self, indent):
-        print(f"{indent}{self.lexeme_}")
-        self.op0_.Visit(indent + "\t")
-        self.op1_.Visit(indent + "\t")
+    def Visit(self):
+        pass
 
 class Rel():
     def __init__(self, lexeme, lhs, rhs):
@@ -144,30 +178,38 @@ class Rel():
         self.lhs_ = lhs
         self.rhs_ = rhs
 
-    def Visit(self, indent):
-        print(f"{indent}{self.lexeme_}")
-        self.lhs_.Visit(indent + "\t")
-        self.rhs_.Visit(indent + "\t")
+    def Visit(self):
+        print(f"{self.lexeme_}")
+        self.lhs_.Visit()
+        self.rhs_.Visit()
 
 class While():
-    def __init__(self, cond, body):
+    def __init__(self, cond, body, start_label = newlabel(), end_label = newlabel()):
         self.cond_ = cond
         self.body_ = body
+        self.start_label_ = start_label
+        self.end_label_ = end_label
 
-    def Visit(self, indent):
-        print(f"{indent}while")
-        self.cond_.Visit(indent + "\t")
-        self.body_.Visit(indent + "\t")
+    def Visit(self):
+        n = rvalue(self.cond_)
+        print(f"{self.start_label_}:")
+        print(f"ifFalse {n.name()} goto {self.end_label_}")
+        self.body_.Visit()
+        print(f"goto {self.start_label_}")
+        print(f"{self.end_label_}:")
 
 class If():
-    def __init__(self, cond, body):
+    def __init__(self, cond, body, label = newlabel()):
         self.cond_ = cond
         self.body_ = body
+        self.label_ = label
 
-    def Visit(self, indent):
-        print(f"{indent}if")
-        self.cond_.Visit(indent + "\t")
-        self.body_.Visit(indent + "\t")
+    def Visit(self):
+        n = rvalue(self.cond_)
+        print(f"ifFalse {n.name()} goto {self.label_}")
+        self.body_.Visit()
+        print(f"{self.label_}:")
+
 
 class LexedParser():
     def __init__(self, program_string):
@@ -336,4 +378,4 @@ class Env():
 program_string = sys.stdin.read()
 syntax_tree = LexedParser(program_string).Parse()
 
-syntax_tree.Visit("")
+syntax_tree.Visit()
